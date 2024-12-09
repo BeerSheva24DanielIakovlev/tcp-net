@@ -1,31 +1,49 @@
 package telran.net;
+
 import java.net.*;
-public class TcpServer implements Runnable{
-Protocol protocol;
-int port;
-public TcpServer(Protocol protocol, int port) {
-    this.protocol = protocol;
-    this.port = port;
-}
+import java.io.*;
+
+public class TcpServer implements Runnable {
+    private final Protocol protocol;
+    private final int port;
+    private volatile boolean isShuttingDown = false;
+
+    public TcpServer(Protocol protocol, int port) {
+        this.protocol = protocol;
+        this.port = port;
+    }
+
     @Override
     public void run() {
-        //FIXME add SocketTimeOut handling for shutdown 
-       try (ServerSocket serverSocket = new ServerSocket(port)) {
-         System.out.println("Server is listening on the port "+ port);
-            while(true) {
-                Socket socket = serverSocket.accept();
-                var session = new TcpClientServerSession(protocol, socket);
-                Thread thread = new Thread(session);
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            System.out.println("Server is listening on port " + port);
 
-                thread.start();
+            while (!isShuttingDown) {
+                try {
+                    serverSocket.setSoTimeout(1000);
+                    Socket socket = serverSocket.accept();
+
+                    if (isShuttingDown) {
+                        socket.close();
+                        break;
+                    }
+
+                    Thread thread = new Thread(new TcpClientServerSession(protocol, socket));
+                    thread.start();
+
+                } catch (SocketTimeoutException e) {
+                    
+                }
             }
-       } catch (Exception e) {
-        System.out.println(e);
-       }
-    }
-    public void shutdown() {
-        //TODO
-        //In the ExecutorService framework to provide shutdownNow (to ignore all not processing client sessions)
+        } catch (IOException e) {
+            System.out.println("Server error: " + e.getMessage());
+        }
+
+        System.out.println("Server has shut down.");
     }
 
+    public void shutdown() {
+        isShuttingDown = true;
+        System.out.println("Shutdown initiated.");
+    }
 }
